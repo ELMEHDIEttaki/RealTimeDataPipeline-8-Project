@@ -1,0 +1,8 @@
+# PostgreSQL client
+psycopg2-binary==2.9.10
+
+# Kafka client (Confluent)
+confluent-kafka==2.8.0
+
+# Optional: environment variable management
+python-dotenv==1.0.0

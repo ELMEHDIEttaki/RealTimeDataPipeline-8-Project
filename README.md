@@ -1,273 +1,211 @@
-## 🌟 Design Decisions and Reasoning
+⚡ Real-Time Engagement Analytics Platform
 
-### Why Real-Time Analytics?
-Real-time analytics enables businesses to make immediate decisions based on user engagement data. This project was designed to handle high-throughput event streams while maintaining scalability and fault tolerance.
-## **Architecture**
+A distributed data pipeline for real-time engagement analytics, designed to process high-throughput events (plays, pauses, clicks, etc.) and serve both low-latency APIs and long-term analytics queries.
+
+Built with PostgreSQL, Kafka, Spark Structured Streaming, Cassandra, and Redis — all containerized via Docker.
+
+🌟 Design Decisions and Reasoning
+Why Real-Time Analytics?
+
+Real-time analytics enables businesses to make immediate decisions based on user engagement data (e.g., boosting content recommendations, detecting drop-offs).
+
+This project was designed to handle high-throughput event streams while maintaining scalability and fault tolerance.
+
+🏗️ Architecture
 ![Architecture](architecture-8-UseCase.drawio.svg)
-### Key Design Choices:
-1. **PostgreSQL for Source of Truth**:
-  - Relational databases are ideal for structured data and transactional integrity.
-  - PostgreSQL was chosen for its reliability and compatibility with Docker.
+🔑 Key Design Choices
 
-2. **Kafka for Event Streaming**:
-  - Kafka provides durability, scalability, and backpressure handling.
-  - It decouples producers and consumers, ensuring flexibility in downstream processing.
+PostgreSQL as Source of Truth
 
-3. **Spark Structured Streaming for Processing**:
-  - Spark was selected for its ability to handle large-scale data processing.
-  - Structured Streaming simplifies real-time computations with built-in fault tolerance.
+Ideal for structured metadata & transactional integrity.
 
-4. **Cassandra for Long-Term Storage Since I reached out Project Limit in my GCP Console Account to use BigQuery**:
-  - Cassandra offers high availability and scalability for analytics data.
-  - It is optimized for write-heavy workloads, making it ideal for storing engagement metrics.
+Used as the central store for content & engagement events.
 
-5. **Redis for Low-Latency Serving**:
-  - Redis was chosen for its in-memory data store capabilities.
-  - It ensures fast access to frequently queried data, improving API response times.
+Kafka for Event Streaming
 
----
+Handles durability, scalability, and backpressure.
 
+Decouples producers and consumers for flexibility.
 
-## 🧱 Layers Explained
+Spark Structured Streaming for Processing
 
-### 1. **Data Source Layer**
+Efficient at handling large-scale real-time computations.
 
-#### 📌 Purpose:
-This layer holds the source of truth for raw data — including content metadata and engagement events.
+Provides checkpointing and fault tolerance.
 
-#### 🛠️ Tools:
-- **PostgreSQL**: Hosted in Docker.
-- **Tables**:
-  - `content`: Holds metadata about content (type, length, etc.)
-  - `engagement_events`: Raw user interactions with content.
-  - `outbox_events`: Tracks events to be published to Kafka.
+Cassandra for Long-Term Storage
 
-#### ⚙️ How It Works:
-- We run a SQL script (`setup.sql`) to bootstrap the schema.
-- Engagement events are sent via a small Python API producer (`ingestorProducer`) to Kafka.
+Distributed, highly available, write-optimized.
 
----
+Chosen instead of BigQuery (due to GCP quota limits).
 
-### 2. **Ingestion Layer**
+Redis for Low-Latency Serving
 
-#### 📌 Purpose:
-Ingests raw events from PostgreSQL (via outbox) and pushes them to Kafka topics.
+In-memory caching for instant API responses.
 
-#### 🛠️ Tools:
-- **Python Producer** (Dockerized): Sends engagement events to Kafka.
-- **Kafka Topics**:
-  - `engagement_events`
+Stores event-level engagement data keyed by event_id.
 
-#### ⚙️ How It Works:
-- Python reads rows from PostgreSQL and pushes JSON payloads to Kafka.
-- Kafka handles buffering, durability, and backpressure.
+🧱 Layered Architecture
+1️⃣ Data Source Layer
 
----
+📌 Purpose: Holds raw metadata and events.
 
-### 3. **Message Broker Layer**
+🛠️ Tools:
 
-#### 📌 Purpose:
-Provides decoupling and durability for event transport.
+PostgreSQL (Dockerized)
 
-#### 🛠️ Tools:
-- **Kafka (KRaft mode)**: Broker for pub/sub messaging.
-- **Kafdrop**: Web UI for inspecting Kafka topics/messages.
+📂 Tables:
 
-#### ⚙️ How It Works:
-- Engagement events are produced into the `engagement_events` topic.
-- Spark Structured Streaming consumes the topic downstream.
+content: Metadata (type, length, publish date, etc.)
 
----
+engagement_events: Raw user interactions (play, pause, etc.)
 
-### 4. **Stream Processing Layer**
+outbox_events: Event sourcing table → ingested into Kafka
 
-#### 📌 Purpose:
-Consumes Kafka messages, enriches data with content metadata, calculates engagement metrics, and writes results to Cassandra and Redis.
+⚙️ Flow:
 
-#### 🛠️ Tools:
-- **Apache Spark** (Standalone cluster with master + workers)
-- **Python (Spark job)**: Using `pyspark`.
+Bootstrap schema via setup.sql.
 
-#### ⚙️ How It Works:
-- Reads `engagement_events` from Kafka using Spark Structured Streaming.
-- Enriches events by joining with the `content` table in PostgreSQL.
-- Computes:
-  - `engagement_seconds = duration_ms / 1000`
-  - `engagement_pct = engagement_seconds / length_seconds`
-- Writes enriched data to:
-  - **Cassandra** for long-term serving.
-  - **Redis** for caching.
+Insert data manually (for tests) or through a small Python producer (ingestorProducer).
 
----
+2️⃣ Ingestion Layer
 
-### 5. **Serving Layer**
+📌 Purpose: Pushes new events to Kafka.
 
-#### 📌 Purpose:
-Makes processed data available to downstream systems and APIs.
+🛠️ Tools:
 
-#### 🛠️ Tools:
-- **Cassandra**: Primary analytics store (historical queries).
-- **Redis**: Low-latency caching layer for serving APIs.
-- **External APIs**: for the exetrnal system via REST APIs. (TO DO)
+Python Producer (Dockerized)
 
-#### ⚙️ How It Works:
-- Spark writes enriched metrics into `content_analytics.engagement_metrics` (Cassandra).
-- Redis caches event-level data keyed by `event_id`.
-- APIs or BI tools can consume data from either source.
+Kafka Topics (engagement_events)
 
----
+⚙️ Flow:
 
+New rows in outbox_events are published as JSON to Kafka.
 
-## 📊 Analytics Metrics
+3️⃣ Message Broker Layer
 
-### Engagement Metrics Calculated:
-- **Engagement Seconds**: Total time spent engaging with content.
-- **Engagement Percentage**: Ratio of engagement time to content length.
+📌 Purpose: Decouples producers from stream processing.
 
-### Data Flow:
-1. Events are ingested from PostgreSQL into Kafka.
-2. Spark enriches and computes metrics.
-3. Metrics are stored in Cassandra for historical queries.
-4. Redis caches data for low-latency API responses.
+🛠️ Tools:
 
----
+Kafka (KRaft mode) for pub/sub messaging.
 
-## 🛡️ Fault Tolerance and Scalability
+Kafdrop UI for inspecting topics/messages.
 
-### Fault Tolerance:
-- Kafka ensures durability of events.
-- Spark Structured Streaming provides checkpointing for recovery.
+⚙️ Flow:
 
-### Scalability:
-- Kafka partitions allow horizontal scaling of producers and consumers.
-- Cassandra's distributed architecture supports high write throughput.
+Producers → Kafka → Consumers (Spark, etc.)
 
----
----
+4️⃣ Stream Processing Layer
 
+📌 Purpose: Enriches, transforms, and routes engagement data.
 
-## 🏗️ Execution Methodology
+🛠️ Tools:
 
+Apache Spark (Standalone cluster)
 
-## 🛠️ Getting Started (Run Locally)
+PySpark job (EngagementProcessor)
 
-### ✅ Prerequisites
+⚙️ Flow:
 
-- Docker & Docker Compose
-- Python 3.12+
+Consume from engagement_events (Kafka).
 
-Run the docker compose :
+Enrich events with PostgreSQL content table.
 
-``` docker compose build up ```
-# wait docker setup all service ....
+Compute:
 
-### Lets' simulate an cas d'usage:
-open postgresql console from a posgresql_container via:
-``` docker exec -it ontainer_PostgreSQL psql -U analytics_user -d streaming_db ```
-# you will see an interface to log via password
-password: myStrongPassword123
+engagement_seconds = duration_ms / 1000
 
-Now you will enter to postgresql SQL instance
+engagement_pct = engagement_seconds / length_seconds
 
-To check if table are created or not run:
-``` \dt ```
-You will see List of created realations as shown below:
+Write to Cassandra & Redis.
 
-Schema |       Name        | Type  |     Owner      
---------+-------------------+-------+----------------
- public | content           | table | analytics_user
- public | engagement_events | table | analytics_user
- public | outbox_events     | table | analytics_user
+5️⃣ Serving Layer
 
-then run the first insert data to content table:
+📌 Purpose: Provides APIs and queries on processed data.
 
+🛠️ Tools:
 
--- =====================================
--- CONTENT TABLE TEST DATA
--- =====================================
+Cassandra for historical analytics.
 
-```
-INSERT INTO content (id, slug, title, content_type, length_seconds, publish_ts)
-VALUES
-    ('11111111-1111-1111-1111-111111111111', 'daily-news-ep1', 'Daily News – Episode 1', 'podcast', 1800, NOW() - INTERVAL '2 days'),
-    ('22222222-2222-2222-2222-222222222222', 'tech-weekly', 'Tech Weekly Newsletter', 'newsletter', NULL, NOW() - INTERVAL '1 day'),
-    ('33333333-3333-3333-3333-333333333333', 'ai-documentary', 'AI Documentary 2025', 'video', 5400, NOW() - INTERVAL '3 hours');
+Redis for cached lookups.
 
-```
+APIs (TO DO) → External consumers via REST/GraphQL.
 
-Insert also data to :
--- =====================================
--- ENGAGEMENT_EVENTS TABLE TEST DATA
--- =====================================
+⚙️ Flow:
 
-``` INSERT INTO engagement_events (content_id, user_id, event_type, event_ts, duration_ms, device, raw_payload)
-VALUES
-    ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'play',   NOW() - INTERVAL '1 hour', 30000, 'ios', '{"bitrate": "128kbps"}'),
-    ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'pause',  NOW() - INTERVAL '59 minutes', NULL, 'ios', '{"reason": "incoming call"}'),
-    ('11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'finish', NOW() - INTERVAL '30 minutes', 1800000, 'web-safari', '{"quality": "HD"}'),
-    ('33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'click',  NOW() - INTERVAL '10 minutes', NULL, 'android', '{"button": "subscribe"}');
-```
+Spark → Cassandra (engagement_metrics table).
 
-When you insert the data to engagement_events table A Trriger will invoked to set related data fields to outbox_events table to ingest it to kafka from the ingestor layer
+Spark → Redis (engagement_events:event:{id}).
 
-Go to spark job log to see what happen via:
+📊 Metrics Computed
 
-```docker compose logs -f processing```
+Engagement Seconds: Total time spent engaging with content.
 
-Then go to cassandra service to check the transformed data serving :
+Engagement Percentage: Ratio of engagement time to total content length.
 
-``` docker exec -it Container_Cassandra cqlsh -u cassandra -p cassandra ```
-Then
-execute cassandra queries below
+🛡️ Fault Tolerance & Scalability
 
-``` DESCRIBE KEYSPACES; ```
-you will see content_analytics keyspace
+✅ Kafka → Durable event log.
 
-To enter into content_analytics keyspace : ``` USE content_analytics;```
+✅ Spark Structured Streaming → Checkpoint recovery.
 
-Execute: ``` select * from content_analytics.engagement_metrics ; ```
+✅ Cassandra → Horizontally scalable writes.
 
-For Redis go to browser and Tape: localhost:8001
+✅ Redis → Low-latency reads.
 
-## 1. Check if keys exist:
-Enter to CLI console and run: KEYS engagement_events:*
-OUTPUT:
-```
-1) "engagement_events:event:2"
-2) "engagement_events:event:3"
-3) "engagement_events:event:1"
-4) "engagement_events:event:4"
+🚀 Execution Methodology
+✅ Prerequisites
 
-```
-## 2. Inspect one record
-HGETALL engagement_events:event:1
-OUPTUT: 
-```
-1) "user_id"
-2) "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-3) "event_time_str"
-4) "2025-08-25 16:13:40.436907"
-5) "engagement_seconds_str"
-6) "30.0"
-7) "duration_ms_str"
-8) "30000"
-9) "event_id"
-10) "1"
-11) "content_id"
-12) "11111111-1111-1111-1111-111111111111"
-```
+Docker & Docker Compose
 
-TO DO:
-We stilling develop the BACKFILL Mechanisme && REST API for the ThirParty Systems
+Python 3.12+
 
----
+.env file for configuration (see below)
 
-## 🚀 Step-by-Step Setup
-
-### 1. **Clone the Repository**
-
-```bash
+⚙️ Setup
 git clone https://github.com/ELMEHDIEttaki/real-time-engagement.git
 cd real-time-engagement
 
-docker compose build up
+# Run everything
+docker compose up --build
+
+🧪 Usage Example
+1. Insert Content Metadata
+INSERT INTO content (id, slug, title, content_type, length_seconds, publish_ts)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'daily-news-ep1', 'Daily News – Episode 1', 'podcast', 1800, NOW() - INTERVAL '2 days'),
+  ('22222222-2222-2222-2222-222222222222', 'tech-weekly', 'Tech Weekly Newsletter', 'newsletter', NULL, NOW() - INTERVAL '1 day'),
+  ('33333333-3333-3333-3333-333333333333', 'ai-documentary', 'AI Documentary 2025', 'video', 5400, NOW() - INTERVAL '3 hours');
+
+2. Insert Engagement Events
+INSERT INTO engagement_events (content_id, user_id, event_type, event_ts, duration_ms, device, raw_payload)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'play',   NOW() - INTERVAL '1 hour', 30000, 'ios', '{"bitrate": "128kbps"}'),
+  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'pause',  NOW() - INTERVAL '59 minutes', NULL, 'ios', '{"reason": "incoming call"}'),
+  ('11111111-1111-1111-1111-111111111111', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'finish', NOW() - INTERVAL '30 minutes', 1800000, 'web-safari', '{"quality": "HD"}'),
+  ('33333333-3333-3333-3333-333333333333', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'click',  NOW() - INTERVAL '10 minutes', NULL, 'android', '{"button": "subscribe"}');
+
+
+🔄 A trigger will insert into outbox_events → ingestor picks it up → sends to Kafka.
+
+🔍 Verification
+1. Spark Logs
+docker compose logs -f processing
+
+2. Cassandra
+docker exec -it Container_Cassandra cqlsh -u cassandra -p cassandra
+USE content_analytics;
+SELECT * FROM engagement_metrics;
+
+3. Redis
+
+Web UI → http://localhost:8001
+
+CLI:
+
+# List keys
+KEYS engagement_events:*
+
+# Inspect one
+HGETALL engagement_events:event:1

@@ -13,6 +13,8 @@ This project was designed to handle high-throughput event streams while maintain
 
 🏗️ Architecture
 ![Architecture](architecture-8-UseCase.drawio.svg)
+
+![Architecture](architecture-8-UseCase.webp)
 🔑 Key Design Choices
 
 PostgreSQL as Source of Truth
@@ -209,3 +211,13 @@ CLI:
 
 # Inspect one
 ```HGETALL engagement_events:event:1```
+
+🛣️ Roadmap
+
+ Add Backfill mechanism (replay events from history).
+
+ Develop REST API for third-party systems.
+
+ Add Grafana dashboards for monitoring engagement.
+
+ Deploy to Kubernetes with Helm charts.

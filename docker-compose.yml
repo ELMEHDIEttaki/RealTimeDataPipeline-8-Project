@@ -6,20 +6,19 @@ networks:
 
 services:
   # PostgreSQL Instance Service
-  postgresql:
+  postgres:
     image: docker.io/bitnami/postgresql:17
     networks:
       - custom_network
     container_name: Container_PostgreSQL
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
       - ./source-layer/setup.sql:/docker-entrypoint-initdb.d/setup.sql
     environment:
       - POSTGRES_USER=analytics_user
       - POSTGRES_PASSWORD=myStrongPassword123
       - POSTGRES_DB=streaming_db
-
 
   # Kakfa service
   kafka:
@@ -92,7 +91,7 @@ services:
     container_name: Container-Spark-Worker
     environment:
       - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark:7077
+      - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=4G
       - SPARK_WORKER_CORES=2
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -107,6 +106,67 @@ services:
     volumes:
       - "spark-worker_data:/bitnami"
   
+  # Redis Service for caching
+  redis:
+    image: docker.io/redis/redis-stack:latest
+    networks:
+      - custom_network
+    container_name: Container_Redis
+    restart: "unless-stopped"
+    # The Redis service is configured to allow empty passwords for development purposes.
+    # In production, it is recommended to set a strong password.
+    environment:
+      # ALLOW_EMPTY_PASSWORD is recommended only for development.
+      - ALLOW_EMPTY_PASSWORD=yes
+      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+    ports:
+      - "6379:6379"
+      - "8001:8001" # Optional, for Redis GUI like RedisInsight
+    volumes:
+      - "redis_data:/bitnami"
+
+  # Cassandra Service
+  cassandra:
+    image: docker.io/bitnami/cassandra:latest
+    # build:
+    #   context: ./serving-layer/cassandra
+    #   dockerfile: Dockerfile
+    restart: "unless-stopped"
+    networks:
+      - custom_network
+    container_name: Container_Cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=EcoEventSysCluster
+      - CASSANDRA_DC=EcoEventSysDC
+      - CASSANDRA_RACK=EcoEventSysRack
+      # Set your desired username/password
+      - CASSANDRA_USER=cassandra
+      - CASSANDRA_PASSWORD=cassandra
+    volumes:
+      - "cassandra_data:/var/lib/cassandra/data"
+  # This service is to initialize the Cassandra with our keyspace and table
+  cassandra-init:
+    image: cassandra:4.1
+    networks:
+      - custom_network
+    restart: "no"
+    container_name: Cassandra-Setup-Container
+    depends_on:
+      - cassandra
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      until cqlsh cassandra -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES'; do
+        echo 'Waiting for Cassandra...';
+        sleep 5;
+      done &&
+      cqlsh cassandra -u cassandra -p cassandra -f /cassandra-setup.cql
+      cqlsh cassandra -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES'
+      "
+    volumes:
+      - ./serving-layer/cassandra/cassandra-setup.cql:/cassandra-setup.cql
     # Service that create kafka topic <<engagement_events>> for our use case
   topic-creation:
     networks:
@@ -118,27 +178,46 @@ services:
     container_name: Topics-Setup-Container
     depends_on:
       - kafka
-
-    # Service create tables on postgresql database
-  # tables-creation:
-  #   networks:
-  #     - custom_network
-  #   restart: "no"
-  #   build:
-  #     context: ./source-layer
-  #     dockerfile: Dockerfile
-  #   container_name: Tables-Setup-Container
-  #   depends_on:
-  #     - postgresql
-  #   environment:
-  #     - DB_HOST=postgresql
-  #     - DB_USER=analytics_user
-  #     - DB_NAME=streaming_db
-  #     - POSTGRES_PASSWORD=myStrongPassword123
-
-# secrets:
-#   db_password:
-#     file: ./secrets/db_password.txt
+  
+  # The Ingestor Service
+  ingestion:
+    networks:
+      - custom_network
+    restart: "no"
+    build:
+      context: ./ingestion-layer
+      dockerfile: Dockerfile
+    container_name: Ingestion-Container
+    depends_on:
+      - kafka
+      - postgres
+    env_file:
+      - ./ingestion-layer/.env
+    ports:
+      - "5000:5000"
+  
+  # The Processing Service
+  processing:
+    networks:
+      - custom_network
+    restart: "no"
+    build:
+      context: ./processing-layer
+      dockerfile: Dockerfile
+    container_name: Processing-Container
+    depends_on:
+      - spark-master
+      - spark-worker
+      - kafka
+      - postgres
+      - cassandra
+      - redis
+    # env_file:
+    #   - ./processing-layer/.env
+    ports:
+      - "4040:4040" # Spark UI port for monitoring
+    volumes:
+      - "processing-layer_data:/app"
 
 volumes:
   postgresql_data:
@@ -150,4 +229,10 @@ volumes:
   spark-master_data:
     driver: local
   spark-worker_data:
+    driver: local
+  redis_data:
+    driver: local
+  cassandra_data:
+    driver: local
+  processing-layer_data:
     driver: local

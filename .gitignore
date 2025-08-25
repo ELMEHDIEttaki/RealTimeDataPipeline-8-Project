@@ -1,2 +1,16 @@
 /env
 /documentation.txt
+/ingestion-layer/ingestion.py
+
+
+/processing-layer/.dockerignore
+/processing-layer/streaming-job.py
+/processing-layer/test.py
+/processing-layer/test1.py
+/processing-layer/test2.ipynb
+/processing-layer/test3.py
+/processing-layer/pom.xml
+/image.png
+/architecture-8-UseCase.drawio.svg
+
+/secrets

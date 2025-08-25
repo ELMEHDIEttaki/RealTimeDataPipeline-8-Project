@@ -1,0 +1,13 @@
+FROM cassandra:latest
+
+
+WORKDIR /Cassandra_database
+
+
+COPY cassandra-setup.cql .
+COPY init-cassandra.sh .
+
+RUN chmod +x /init-cassandra.sh
+
+
+ENTRYPOINT ["/init-cassandra.sh"]

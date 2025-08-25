@@ -1,0 +1,17 @@
+FROM bitnami/spark:3.5.1
+
+# Set working directory
+WORKDIR /stream-processing
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy all application code
+COPY . .
+
+# Run Spark job
+CMD ["spark-submit", \
+     "--master", "spark://spark-master:7077", \
+     "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.6.0,com.redislabs:spark-redis_2.12:3.1.0,com.datastax.spark:spark-cassandra-connector_2.12:3.5.1", \
+     "/stream-processing/stream-processor.py"]

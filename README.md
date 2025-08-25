@@ -205,7 +205,7 @@ Web UI → http://localhost:8001
 CLI:
 
 # List keys
-KEYS engagement_events:*
+```KEYS engagement_events:*```
 
 # Inspect one
-HGETALL engagement_events:event:1
+```HGETALL engagement_events:event:1```

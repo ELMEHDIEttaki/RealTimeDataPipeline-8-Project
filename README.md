@@ -14,7 +14,6 @@ This project was designed to handle high-throughput event streams while maintain
 🏗️ Architecture
 ![Architecture](architecture-8-UseCase.drawio.svg)
 
-![Architecture](architecture-8-UseCase.webp)
 🔑 Key Design Choices
 
 PostgreSQL as Source of Truth

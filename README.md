@@ -16,35 +16,35 @@ This project was designed to handle high-throughput event streams while maintain
 
 🔑 Key Design Choices
 
-PostgreSQL as Source of Truth
+PostgreSQL as Source of Truth:
 
-Ideal for structured metadata & transactional integrity.
+  Ideal for structured metadata & transactional integrity.
 
-Used as the central store for content & engagement events.
+  Used as the central store for content & engagement events.
 
-Kafka for Event Streaming
+Kafka for Event Streaming:
 
-Handles durability, scalability, and backpressure.
+  Handles durability, scalability, and backpressure.
 
-Decouples producers and consumers for flexibility.
+  Decouples producers and consumers for flexibility.
 
-Spark Structured Streaming for Processing
+Spark Structured Streaming for Processing:
 
-Efficient at handling large-scale real-time computations.
+  Efficient at handling large-scale real-time computations.
 
-Provides checkpointing and fault tolerance.
+  Provides checkpointing and fault tolerance.
 
-Cassandra for Long-Term Storage
+Cassandra for Long-Term Storage:
 
-Distributed, highly available, write-optimized.
+  Distributed, highly available, write-optimized.
 
-Chosen instead of BigQuery (due to GCP quota limits).
+  Chosen instead of BigQuery (due to GCP quota limits).
 
-Redis for Low-Latency Serving
+Redis for Low-Latency Serving:
 
-In-memory caching for instant API responses.
+  In-memory caching for instant API responses.
 
-Stores event-level engagement data keyed by event_id.
+  Stores event-level engagement data keyed by event_id.
 
 🧱 Layered Architecture
 1️⃣ Data Source Layer
